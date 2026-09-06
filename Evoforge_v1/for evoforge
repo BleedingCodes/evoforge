@@ -1,0 +1,60 @@
+EvoForge
+
+An interactive artificial-life laboratory where neural agents evolve inside a persistent ecosystem.
+
+Download EvoForge
+
+It includes:
+
+Neural-network-controlled organisms
+Heritable genomes and mutation
+Crossover between nearby agents
+Emergent herbivores, omnivores, and predators
+Energy, metabolism, movement costs, aging, and reproduction
+Lineage formation, ancestry, dominance, and extinction
+Spatial hashing for efficient perception and collisions
+Plant growth and nutrient recycling
+Day/night environmental pressure
+Real-time population telemetry
+Interactive zooming, panning, inspection, and agent following
+Save/load of complete evolving worlds
+CSV experiment export
+Deterministic experiment seeds
+Headless benchmarking
+Five passing automated tests
+Run it
+unzip evoforge.zip
+cd evoforge
+
+python3 -m pip install -e .
+evoforge run
+
+For a more chaotic world:
+
+evoforge run \
+  --agents 500 \
+  --plants 1600 \
+  --width 1600 \
+  --height 950 \
+  --seed 42
+Controls
+Key	Action
+Space	Pause or resume
+.	Advance one step
+1–5	Change simulation speed
+Left click	Inspect an organism
+Right click	Spawn a plant
+Mouse wheel	Zoom
+Middle drag	Pan
+F	Follow selected organism
+G	Toggle population graph
+W	Toggle world wrapping
+S	Save the entire world
+L	Load the saved world
+T	Export telemetry
+R	Restart
+H	Toggle help
+
+The agents are not assigned fixed behavior. Their decisions come from inherited neural networks. The ecosystem supplies the objective function: survive long enough to reproduce.
+
+That means badly adapted strategies disappear, useful strategies spread, and occasionally something strange emerges that was never explicitly programmed. 

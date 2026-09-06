@@ -1,0 +1,19 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "evoforge"
+version = "1.0.0"
+description = "An interactive artificial-life laboratory with evolving neural agents"
+requires-python = ">=3.11"
+dependencies = [
+  "pygame>=2.5",
+  "numpy>=1.26",
+]
+
+[project.scripts]
+evoforge = "evoforge.cli:main"
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
