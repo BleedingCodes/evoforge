@@ -203,7 +203,7 @@ class App:
             if kind in ("birth", "kill"):
                 self.play_sound(kind)
 
-        if self.spotlight:
+        if self.spotlight and not self.paused:
             self.spotlight_timer -= 1
             if self.spotlight_timer <= 0 or self.selected_id not in self.world.agents:
                 self.selected_id = self.pick_notable_agent()
