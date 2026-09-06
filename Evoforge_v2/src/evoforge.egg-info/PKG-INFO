@@ -1,0 +1,7 @@
+Metadata-Version: 2.4
+Name: evoforge
+Version: 1.0.0
+Summary: An interactive artificial-life laboratory with evolving neural agents
+Requires-Python: >=3.11
+Requires-Dist: pygame>=2.5
+Requires-Dist: numpy>=1.26
