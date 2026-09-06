@@ -1,0 +1,2 @@
+[console_scripts]
+evoforge = evoforge.cli:main
