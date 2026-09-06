@@ -444,9 +444,10 @@ class World:
         self.next_agent_id += 1
 
         lineage_id = parent_lineage
-        divergence = abs(
+        hue_diff = abs(
             child_genome.traits.color_h - agent.genome.traits.color_h
         )
+        divergence = min(hue_diff, 1.0 - hue_diff)
         new_lineage = divergence > 0.085 or self.rng.random() < 0.008
         if new_lineage:
             lineage_id = self.next_lineage_id
