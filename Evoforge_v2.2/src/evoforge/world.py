@@ -65,7 +65,7 @@ class World:
 
         # Narrative / spectacle state — purely presentational, not persisted.
         self.event_log: deque[tuple[int, str]] = deque(maxlen=60)
-        self.frame_events: list[tuple[str, float, float]] = []
+        self.frame_events: deque[tuple[str, float, float]] = deque(maxlen=500)
         self.daylight = 1.0
         self.weather = "calm"
         self.weather_timer = 0
@@ -142,8 +142,8 @@ class World:
 
     def drain_events(self) -> list[tuple[str, float, float]]:
         """Return and clear the spectacle events queued since the last drain."""
-        events = self.frame_events
-        self.frame_events = []
+        events = list(self.frame_events)
+        self.frame_events.clear()
         return events
 
     def rebuild_spatial(self) -> None:
@@ -421,9 +421,10 @@ class World:
         self.next_agent_id += 1
 
         lineage_id = parent_lineage
-        divergence = abs(
+        hue_diff = abs(
             child_genome.traits.color_h - agent.genome.traits.color_h
         )
+        divergence = min(hue_diff, 1.0 - hue_diff)
         if divergence > 0.085 or self.rng.random() < 0.008:
             lineage_id = self.next_lineage_id
             self.next_lineage_id += 1
