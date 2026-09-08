@@ -29,6 +29,7 @@ The simulation also includes:
 - 
 ## 
 ![Screenshot](image.png)
+228 agents, 771 plants, 221 lineages — a live run at step 90, agents (orange) evolving against plant population (green).
 
 ## Install
 
