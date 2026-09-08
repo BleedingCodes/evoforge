@@ -26,7 +26,7 @@ The simulation also includes:
 - deterministic seeds
 - headless benchmarking
 - optional world wrapping
-
+## Screenshot (./image.png)
 ## Install
 
 ```bash
