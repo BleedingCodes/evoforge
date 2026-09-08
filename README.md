@@ -28,7 +28,7 @@ The simulation also includes:
 - optional world wrapping
 - 
 ## 
-![Screenshot]([image.png)
+![Screenshot](image.png)
 
 ## Install
 
