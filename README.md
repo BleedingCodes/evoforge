@@ -27,7 +27,7 @@ The simulation also includes:
 - headless benchmarking
 - optional world wrapping
 - 
-## Screenshot [screenshot](image.png)
+## Screenshot [image.png]
 
 ## Install
 
