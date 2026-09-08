@@ -27,7 +27,7 @@ The simulation also includes:
 - headless benchmarking
 - optional world wrapping
 - 
-## Screenshot !(evoforge/image.png)
+## Screenshot [screenshot](evoforge/image.png)
 
 ## Install
 
