@@ -12,10 +12,14 @@ import numpy as np
 
 from .config import WorldConfig
 from .entities import Agent, Plant
-from .genome import Genome, INPUTS
+from .genome import Genome, INPUTS, hue_word, species_name
 from .mathutil import angle_delta, clamp, wrap_angle
 from .spatial import SpatialHash
 from .telemetry import Telemetry
+
+
+POPULATION_MILESTONES = (50, 100, 250, 500, 1000, 1500)
+KILL_STREAK_MILESTONES = (5, 10, 25, 50)
 
 
 @dataclass(slots=True)
@@ -62,20 +66,9 @@ class World:
         self.births_since_sample = 0
         self.deaths_since_sample = 0
         self.plant_spawn_accumulator = 0.0
-
-        # Narrative / spectacle state — purely presentational, not persisted.
-        self.event_log: deque[tuple[int, str]] = deque(maxlen=60)
-        self.frame_events: deque[tuple[str, float, float]] = deque(maxlen=500)
-        self.daylight = 1.0
-        self.weather = "calm"
-        self.weather_timer = 0
-        self.records: dict[str, float] = {
-            "max_generation": 0,
-            "max_kills": 0,
-            "max_age": 0,
-            "max_radius": 0.0,
-        }
-        self._last_lowpop_warning = -10_000
+        self.events: deque[tuple[int, str]] = deque(maxlen=10)
+        self.flashes: deque[tuple[int, float, float, str]] = deque(maxlen=160)
+        self.population_high_water = 0
 
         for _ in range(config.initial_plants):
             self.spawn_plant()
@@ -137,14 +130,45 @@ class World:
         self.agents[agent.id] = agent
         return agent
 
-    def log(self, text: str) -> None:
-        self.event_log.append((self.step_count, text))
+    def log_event(self, text: str) -> None:
+        self.events.append((self.step_count, text))
 
-    def drain_events(self) -> list[tuple[str, float, float]]:
-        """Return and clear the spectacle events queued since the last drain."""
-        events = list(self.frame_events)
-        self.frame_events.clear()
-        return events
+    def flash(self, x: float, y: float, kind: str) -> None:
+        self.flashes.append((self.step_count, x, y, kind))
+
+    def daylight(self) -> float:
+        return 0.55 + 0.45 * math.sin(
+            (self.step_count % self.config.day_length)
+            / self.config.day_length
+            * math.tau
+        )
+
+    def pick_notable_agent(self) -> tuple[Agent, str] | None:
+        """Pick an agent worth pointing the camera at, with a one-line reason.
+
+        Used by the documentary auto-camera so the sim narrates itself
+        instead of showing a random, possibly-empty patch of the map.
+        """
+        alive = [a for a in self.agents.values() if a.alive]
+        if not alive:
+            return None
+
+        categories = [
+            ("oldest", lambda a: a.age, "the oldest survivor alive"),
+            ("kills", lambda a: a.kills, "the deadliest predator alive"),
+            ("children", lambda a: a.children, "the most prolific parent alive"),
+            ("radius", lambda a: a.radius, "the largest organism alive"),
+            ("speed", lambda a: a.genome.traits.max_speed, "the fastest organism alive"),
+            ("vision", lambda a: a.genome.traits.vision_range, "the keenest-eyed organism alive"),
+            ("energy", lambda a: a.energy / a.max_energy, "thriving at near-full energy"),
+        ]
+        name, key, reason = categories[int(self.rng.integers(0, len(categories)))]
+        best = max(alive, key=key)
+        if key(best) <= 0 and name in ("kills", "children"):
+            best = alive[int(self.rng.integers(0, len(alive)))]
+            reason = "a random survivor"
+        label = species_name(best.genome.traits)
+        return best, f"#{best.id} — {label}: {reason}"
 
     def rebuild_spatial(self) -> None:
         self.agent_space.rebuild(self.agents.values())
@@ -370,12 +394,11 @@ class World:
                 )
                 agent.energy = min(agent.max_energy, agent.energy + gained)
                 agent.food_eaten += gained
-                self.frame_events.append(("kill", agent.x, agent.y))
-                if agent.kills > self.records["max_kills"]:
-                    self.records["max_kills"] = agent.kills
-                    self.log(
-                        f"new apex predator: #{agent.id} (lineage {agent.lineage_id}) "
-                        f"reaches {agent.kills} kills"
+                self.flash(prey.x, prey.y, "kill")
+                if agent.kills in KILL_STREAK_MILESTONES:
+                    self.log_event(
+                        f"{species_name(agent.genome.traits)} #{agent.id} "
+                        f"reached {agent.kills} kills"
                     )
             break
 
@@ -425,7 +448,8 @@ class World:
             child_genome.traits.color_h - agent.genome.traits.color_h
         )
         divergence = min(hue_diff, 1.0 - hue_diff)
-        if divergence > 0.085 or self.rng.random() < 0.008:
+        new_lineage = divergence > 0.085 or self.rng.random() < 0.008
+        if new_lineage:
             lineage_id = self.next_lineage_id
             self.next_lineage_id += 1
             self.lineages[lineage_id] = Lineage(
@@ -435,7 +459,10 @@ class World:
                 birth_step=self.step_count,
                 color_h=child_genome.traits.color_h,
             )
-            self.log(f"new lineage #{lineage_id} branches from #{parent_lineage}")
+            self.log_event(
+                f"New lineage: {species_name(child_genome.traits)} "
+                f"(gen {agent.generation + 1})"
+            )
 
         birth_cost = min(agent.energy * 0.46, child_genome.traits.radius * 12.0 + 38.0)
         agent.energy -= birth_cost
@@ -454,13 +481,7 @@ class World:
         )
         self.lineages[lineage_id].total_births += 1
         self.births_since_sample += 1
-        self.frame_events.append(("birth", child.x, child.y))
-
-        if child.generation > self.records["max_generation"]:
-            self.records["max_generation"] = child.generation
-            if child.generation % 10 == 0 or child.generation < 5:
-                self.log(f"lineage {lineage_id} reaches generation {child.generation}")
-
+        self.flash(child.x, child.y, "birth")
         return child
 
     def step(self) -> None:
@@ -496,24 +517,14 @@ class World:
             if not agent.alive or agent.energy <= 0
         ]
 
+        touched_lineages = {self.agents[i].lineage_id for i in dead_ids}
+
         for agent_id in dead_ids:
             agent = self.agents.pop(agent_id)
             lineage = self.lineages.get(agent.lineage_id)
             if lineage:
                 lineage.total_deaths += 1
-                if lineage.total_deaths >= lineage.total_births and not any(
-                    a.lineage_id == agent.lineage_id for a in self.agents.values()
-                ):
-                    self.log(f"lineage #{agent.lineage_id} has gone extinct")
             self.deaths_since_sample += 1
-            self.frame_events.append(("death", agent.x, agent.y))
-
-            if agent.age > self.records["max_age"]:
-                self.records["max_age"] = agent.age
-                self.log(
-                    f"longevity record: #{agent.id} (lineage {agent.lineage_id}) "
-                    f"survived {agent.age:,} steps"
-                )
 
             if len(self.plants) < self.config.max_plants and self.rng.random() < 0.38:
                 self.spawn_plant(
@@ -522,28 +533,40 @@ class World:
                     energy=min(45.0, agent.max_energy * 0.12),
                 )
 
+        if touched_lineages:
+            surviving = {a.lineage_id for a in self.agents.values()}
+            for lineage_id in touched_lineages:
+                if lineage_id in surviving:
+                    continue
+                lineage = self.lineages.get(lineage_id)
+                if lineage is None or lineage.total_deaths == 0:
+                    continue
+                lived = self.step_count - lineage.birth_step
+                self.log_event(
+                    f"Lineage extinct: {hue_word(lineage.color_h)} #{lineage_id} "
+                    f"(lived {lived} steps, {lineage.total_births} births)"
+                )
+
+        if len(self.agents) > self.population_high_water:
+            for threshold in POPULATION_MILESTONES:
+                if (
+                    self.population_high_water < threshold
+                    <= len(self.agents)
+                ):
+                    self.log_event(f"Population milestone: {threshold} agents")
+            self.population_high_water = len(self.agents)
+        elif len(self.agents) < 12 and self.step_count % 200 == 0:
+            self.log_event(f"Population crisis: only {len(self.agents)} agents left")
+
         for plant in self.plants.values():
             plant.age += 1
 
-        self.daylight = 0.55 + 0.45 * math.sin(
-            (self.step_count % self.config.day_length)
-            / self.config.day_length
-            * math.tau
-        )
-
-        self._update_weather()
-        weather_multiplier = {"calm": 1.0, "bloom": 2.4, "blight": 0.3}[self.weather]
-
+        daylight = self.daylight()
         self.plant_spawn_accumulator += (
             self.config.plant_spawn_rate
-            * (0.45 + self.daylight)
-            * weather_multiplier
+            * (0.45 + daylight)
             * max(0.0, 1.0 - len(self.plants) / self.config.max_plants)
         )
-
-        if len(self.agents) <= 3 and self.step_count - self._last_lowpop_warning > 300:
-            self._last_lowpop_warning = self.step_count
-            self.log(f"population critical: only {len(self.agents)} organisms left")
 
         while self.plant_spawn_accumulator >= 1.0:
             if len(self.plants) < self.config.max_plants:
@@ -560,34 +583,6 @@ class World:
             )
             self.births_since_sample = 0
             self.deaths_since_sample = 0
-
-            biggest = max(
-                (a for a in self.agents.values()),
-                key=lambda a: a.radius,
-                default=None,
-            )
-            if biggest is not None and biggest.radius > self.records["max_radius"]:
-                self.records["max_radius"] = biggest.radius
-                self.log(
-                    f"size record: #{biggest.id} (lineage {biggest.lineage_id}) "
-                    f"grew to radius {biggest.radius:.1f}"
-                )
-
-    def _update_weather(self) -> None:
-        if self.weather_timer > 0:
-            self.weather_timer -= 1
-            if self.weather_timer == 0:
-                self.weather = "calm"
-                self.log("weather settles back to calm")
-            return
-
-        if self.rng.random() < 0.0006:
-            self.weather = "bloom" if self.rng.random() < 0.5 else "blight"
-            self.weather_timer = int(self.rng.integers(400, 900))
-            if self.weather == "bloom":
-                self.log("a resource bloom sweeps the world — plants surge")
-            else:
-                self.log("a blight settles in — food grows scarce")
 
     def stats(self) -> dict[str, Any]:
         agents = list(self.agents.values())
@@ -646,20 +641,5 @@ class World:
         world.births_since_sample = 0
         world.deaths_since_sample = 0
         world.plant_spawn_accumulator = 0.0
-
-        # Narrative / spectacle state — not persisted, reinitialised on load.
-        world.event_log: deque[tuple[int, str]] = deque(maxlen=60)
-        world.frame_events: deque[tuple[str, float, float]] = deque(maxlen=500)
-        world.daylight = 1.0
-        world.weather = "calm"
-        world.weather_timer = 0
-        world.records: dict[str, float] = {
-            "max_generation": 0,
-            "max_kills": 0,
-            "max_age": 0,
-            "max_radius": 0.0,
-        }
-        world._last_lowpop_warning = -10_000
-
         world.rebuild_spatial()
         return world
